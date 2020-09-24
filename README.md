@@ -6,7 +6,9 @@
     The classic snake game written in golang
 </h4>
 
-![Alt text](./snake.gif)
+<p align="center">
+    <img src="./snake.gif">
+</p>
 
 # Usage
 
