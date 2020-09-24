@@ -3,8 +3,11 @@ package main
 import (
 	"container/list"
 	"fmt"
+	"image"
 	"image/color"
+	_ "image/png"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/faiface/pixel"
@@ -18,6 +21,8 @@ import (
 const (
 	size  float64 = 16
 	speed float64 = 16
+	minX  float64 = 0
+	minY  float64 = 0
 	maxX  float64 = 1024
 	maxY  float64 = 768
 )
@@ -46,11 +51,12 @@ type Body struct {
 }
 
 type Food struct {
-	x float64
-	y float64
+	x      float64
+	y      float64
+	sprite *pixel.Sprite
 }
 
-func createFood(head *Head) *Food {
+func createFood(head *Head, sprite *pixel.Sprite) *Food {
 	var x float64 = -1
 	var y float64 = -1
 
@@ -60,8 +66,9 @@ func createFood(head *Head) *Food {
 	}
 
 	return &Food{
-		x: x,
-		y: y,
+		x:      x,
+		y:      y,
+		sprite: sprite,
 	}
 }
 
@@ -119,17 +126,29 @@ func (head *Head) update() {
 	switch head.d {
 	case UP:
 		head.y += size
-	case DOWN:
-		head.y -= size
-	case LEFT:
-		head.x -= size
+		if head.y >= maxY {
+			head.y = minY
+		}
 	case RIGHT:
 		head.x += size
+		if head.x >= maxX {
+			head.x = minX
+		}
+	case DOWN:
+		head.y -= size
+		if head.y < minY {
+			head.y = maxY - size
+		}
+	case LEFT:
+		head.x -= size
+		if head.x < minX {
+			head.x = maxX - size
+		}
 	}
+	fmt.Printf("Head: x=%v y=%v\n", head.x, head.y)
 
 	e := head.bodies.Front()
 	head.bodies.Remove(e)
-
 }
 
 func createBody(x, y float64) *Body {
@@ -158,10 +177,8 @@ func (body *Body) draw(imd *imdraw.IMDraw) {
 	imd.Rectangle(0)
 }
 
-func (food *Food) draw(imd *imdraw.IMDraw) {
-	imd.Color = pixel.RGB(1, 0, 0)
-	imd.Push(pixel.V(food.x, food.y), pixel.V(food.x+size, food.y+size))
-	imd.Rectangle(0)
+func (food *Food) draw(win *pixelgl.Window) {
+	food.sprite.Draw(win, pixel.IM.Moved(pixel.V(food.x+(size/2), food.y+(size/2))))
 }
 
 func displayText(win *pixelgl.Window, p string) {
@@ -174,6 +191,19 @@ func displayText(win *pixelgl.Window, p string) {
 	basicTxt.Color = color.Black
 	fmt.Fprintln(basicTxt, p)
 	basicTxt.Draw(win, pixel.IM.Scaled(basicTxt.Orig, 4))
+}
+
+func loadPicture(path string) (pixel.Picture, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	img, _, err := image.Decode(file)
+	if err != nil {
+		return nil, err
+	}
+	return pixel.PictureDataFromImage(img), nil
 }
 
 func run() {
@@ -190,10 +220,17 @@ func run() {
 		panic(err)
 	}
 
+	spriteSheet, err := loadPicture("snake-sprites.png")
+	if err != nil {
+		panic(err)
+	}
+	foodFrame := pixel.R(spriteSheet.Bounds().Min.X, spriteSheet.Bounds().Min.Y, size, size)
+	foodSprite := pixel.NewSprite(spriteSheet, foodFrame)
+
 	imd := imdraw.New(nil)
 
 	head := createHead(64, 64, 3)
-	food := createFood(head)
+	food := createFood(head, foodSprite)
 	alive = true
 
 	for !win.Closed() {
@@ -227,12 +264,12 @@ func run() {
 			head.update()
 			if head.hasEaten(food) {
 				head.grow()
-				food = createFood(head)
+				food = createFood(head, foodSprite)
 			} else if head.collision(head.x, head.y) {
 				alive = false
 			}
 			head.draw(imd)
-			food.draw(imd)
+			food.draw(win)
 		} else {
 			displayText(win, "Game Over")
 		}
